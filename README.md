@@ -96,6 +96,30 @@ Ringkasan nilai (ekuivalen dolar):
 
 ---
 
+## Backtest otomatis lewat file `.ini`
+
+File: [`Tester/backtest_XAUUSD_M1_Pro.ini`](Tester/backtest_XAUUSD_M1_Pro.ini) — konfigurasi
+Strategy Tester agar backtest jalan otomatis dari command line.
+
+**Jalankan (Windows):**
+```
+"C:\Program Files\MetaTrader 5\terminal64.exe" /config:"C:\path\backtest_XAUUSD_M1_Pro.ini"
+```
+
+**Prasyarat (penting):**
+1. Compile `XAUUSD_Scalper_M1_Pro.mq5` → `.ex5` berada di `<Data Folder>/MQL5/Experts/`.
+2. Untuk mode `/config`, taruh `.set` di **`<Data Folder>/MQL5/Profiles/Tester/`**
+   (berbeda dari load manual via tab Inputs yang memakai folder `Presets/`).
+3. Samakan `Symbol=` dengan nama emas di broker Anda (Exness bisa `XAUUSD`, `XAUUSDm`, …).
+
+Setelan utama di dalam ini: `Model=4` (every tick based on real ticks — paling akurat;
+turunkan ke `0` bila real ticks tak tersedia), `Deposit=1000`, `Currency=USD`,
+`Leverage=500`, rentang `FromDate`/`ToDate` (sesuaikan ketersediaan data). Untuk beralih
+ke **optimasi**, set `Optimization=2` dan ubah flag `N`→`Y` pada parameter di `.set`
+(petunjuk lengkap ada sebagai komentar di dalam file `.ini`).
+
+---
+
 ## 1) Cara Memasang di MetaTrader 5
 
 1. Buka **MetaEditor** (`F4` dari MT5).
