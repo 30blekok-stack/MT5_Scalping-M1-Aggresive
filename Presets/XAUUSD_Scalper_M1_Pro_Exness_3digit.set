@@ -1,90 +1,90 @@
 ; ==================================================================
-;  PRESET "TERBAIK" (starting point) - XAUUSD_Scalper_M1_Pro.mq5
-;  Untuk BROKER 3 DIGIT seperti EXNESS  ->  1 point = 0.001 USD
+;  PRESET BASELINE (yang PASTI menghasilkan transaksi) - 3 DIGIT
+;  Untuk XAUUSD_Scalper_M1_Pro.mq5 di broker 3 digit (Exness).
+;  1 point = 0.001 USD  ->  1.00 USD = 1000 points.
 ;
-;  Konversi cepat: 1.00 USD gerak emas = 1000 points.
-;    0.10 USD = 100 pt | 0.30 USD = 300 pt | 1.00 USD = 1000 pt
+;  KENAPA versi lama "tidak ada transaksi"?
+;   Kombinasi 5 filter + nilai points terlalu ketat (mis. MinMAGap
+;   & ATR guard) bisa memblokir SEMUA entry. Preset ini SENGAJA
+;   dilonggarkan: Sesi & ATR-guard OFF, gap MA kecil, spread longgar.
 ;
-;  CEK DULU: pastikan XAUUSD di akun Anda benar-benar 3 desimal
-;  (mis. 2345.678). Jika hanya 2 desimal, semua jarak di sini 10x
-;  terlalu besar -> bagi 10 (pakai preset broker 2 digit).
+;  ALUR PEMAKAIAN:
+;   1) Jalankan backtest -> pastikan sekarang ADA transaksi.
+;   2) Lihat log "RINGKASAN DIAGNOSTIK EA" di akhir test (Journal),
+;      untuk tahu filter mana yang paling banyak menolak.
+;   3) Nyalakan filter satu per satu (Sesi -> ATR guard -> naikkan
+;      ADX/gap) sambil bandingkan hasil. Set InpDebugMode=true untuk
+;      melihat alasan penolakan per sinyal.
 ;
-;  CARA PAKAI:
-;   1) Copy file ini ke  <Data Folder>/MQL5/Presets/
-;   2) Attach EA ke chart XAUUSD M1 -> tab Inputs -> tombol "Load"
-;      -> pilih file .set ini.
-;   3) Sesuaikan InpStartHour/InpEndHour ke JAM SERVER broker Anda
-;      (Exness umumnya GMT+0; sebagian server GMT+2/+3).
+;  CEK DIGIT: pastikan XAUUSD Anda benar 3 desimal (mis. 2345.678).
+;   EA mencetak "SKALA: 100 pt = ..." saat init — kalau angkanya
+;   tidak masuk akal, Anda salah preset (pakai versi 2 digit).
 ;
-;  CATATAN LOT & PARTIAL TP:
-;   InpLotSize=0.02 dipakai agar Partial TP 50% bisa jalan
-;   (50% dari 0.02 = 0.01 = volume minimum). Jika Anda mau 0.01,
-;   Partial TP otomatis dilewati -> set InpUsePartialTP=false.
-;   Ingat: lot = risiko. SL 2.00 USD @0.02 lot = -4.00 USD/trade.
+;  LOT & PARTIAL TP: InpLotSize=0.02 agar partial 50% bisa jalan
+;   (0.01 = lot minimum). SL 2000 pt = 2.00 USD @0.02 lot = -4 USD.
 ; ==================================================================
 
-; --- Moving Average (M1) ---  (0=SMA 1=EMA 2=SMMA 3=LWMA)
+; --- Moving Average (M1) ---  (0=SMA 1=EMA 2=SMMA 3=LWMA ; price 1=CLOSE)
 InpFastMA=8||5||1||15||N
 InpSlowMA=21||15||1||40||N
 InpMAMethod=1
 InpAppliedPrice=1
 InpUseFullCandle=false
 
-; --- Filter 1: Tren HTF (EMA M15) ---
+; --- Filter 1: Tren HTF (EMA M15) : ON (robust, aman) ---
 InpUseHTFTrend=true
 InpHTFPeriod=50||20||10||100||N
 
-; --- Filter 2: ADX (default M5) ---  (5=M5)
+; --- Filter 2: ADX (M5) : ON, threshold rendah dulu ---
 InpUseADX=true
 InpADXPeriod=14||10||2||20||N
 InpADXTimeframe=5
-InpADXThreshold=23.0||18.0||1.0||30.0||N
+InpADXThreshold=20.0||15.0||1.0||30.0||N
 
-; --- Filter 3: Slope & Jarak MA (points) ---
-;   MinMAGap 120 = 0.12 USD | MaxDist 1200 = 1.20 USD
+; --- Filter 3: Slope & Jarak MA : ON tapi longgar ---
+;   MinMAGap 20 = 0.02 USD | MaxDist 2000 = 2.00 USD
 InpUseMAFilter=true
-InpMinMAGapPoints=120||0||50||500||N
-InpMaxDistPoints=1200||600||200||3000||N
+InpMinMAGapPoints=20||0||20||300||N
+InpMaxDistPoints=2000||800||200||4000||N
 
-; --- Filter 4: Sesi / Jam (JAM SERVER, EndHour eksklusif) ---
-;   8-22 server ~ sesi London + New York. WAJIB sesuaikan!
-InpUseSessionFilter=true
+; --- Filter 4: Sesi/Jam : OFF (paling sering jadi "silent killer") ---
+;   Nyalakan HANYA setelah tahu JAM SERVER broker Anda.
+InpUseSessionFilter=false
 InpStartHour=8
 InpEndHour=22
 
-; --- Filter 5: Guard Volatilitas ATR M1 (points) ---
-;   Min 100 = 0.10 USD (hindari sepi) | Max 1500 = 1.50 USD (hindari spike)
-InpUseATRGuard=true
+; --- Filter 5: Guard ATR M1 : OFF dulu (sangat sensitif skala digit) ---
+;   Nilai utk broker 3 digit: Min 30 = 0.03 USD | Max 5000 = 5.00 USD
+InpUseATRGuard=false
 InpATRPeriod=14||10||2||20||N
-InpMinATRPoints=100||0||50||400||N
-InpMaxATRPoints=1500||800||200||3000||N
+InpMinATRPoints=30||0||30||300||N
+InpMaxATRPoints=5000||2000||500||8000||N
 
-; --- Filter Umum ---
-;   MaxSpread 300 = 0.30 USD. Akun Zero/Raw: turunkan ke ~100-150.
-InpMaxSpreadPoints=300||100||50||600||N
+; --- Filter Umum : spread longgar agar tidak memblokir ---
+;   500 = 0.50 USD. Akun Zero/Raw bisa diperketat ke ~150.
+InpMaxSpreadPoints=500||100||50||800||N
 
-; --- Stop Loss ---
-;   SL tetap 2000 = 2.00 USD. (ATR-stop dimatikan.)
+; --- Stop Loss (tetap) : 2000 = 2.00 USD ---
 InpUseATRStop=false
 InpStopLossPoints=2000||1200||200||4000||N
 InpATRStopMult=1.5||1.0||0.25||3.0||N
 
-; --- Profit: Partial TP + Runner ---
-;   Partial di 1000 = 1.00 USD, tutup 50%, sekaligus SL -> breakeven.
+; --- Profit: Partial TP : 1000 = 1.00 USD, tutup 50% + SL->breakeven ---
 InpUsePartialTP=true
 InpPartialTPPoints=1000||600||200||2500||N
 InpPartialClosePercent=50.0
 
-; --- Profit: Breakeven ---
-;   Trigger 1200 = 1.20 USD | Buffer 150 = 0.15 USD di atas/bawah entry
+; --- Profit: Breakeven : trigger 1200=1.20 | buffer 150=0.15 USD ---
 InpBreakevenTrigger=1200||800||200||2500||N
 InpBreakevenBuffer=150||0||50||500||N
 
-; --- Profit: Trailing (setelah breakeven) ---
-;   Distance 1200 = 1.20 USD | Step 250 = 0.25 USD
+; --- Profit: Trailing : distance 1200=1.20 | step 250=0.25 USD ---
 InpTrailingDistance=1200||600||200||3000||N
 InpTrailingStep=250||100||50||600||N
 
 ; --- Lot & Identitas ---
 InpLotSize=0.02
 InpMagicNumber=20250727
+
+; --- Diagnostik : set true utk melihat alasan tiap sinyal ditolak ---
+InpDebugMode=false

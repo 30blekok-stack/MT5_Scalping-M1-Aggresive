@@ -61,38 +61,41 @@ ber-satuan **points**. Arti 1 point bergantung jumlah **digit** harga broker XAU
 
 ---
 
-## Preset `.set` untuk broker 3 digit (Exness)
+## Preset `.set` — pilih sesuai digit broker
 
-File: [`Presets/XAUUSD_Scalper_M1_Pro_Exness_3digit.set`](Presets/XAUUSD_Scalper_M1_Pro_Exness_3digit.set)
-— preset "starting point" untuk **`XAUUSD_Scalper_M1_Pro.mq5`** pada broker **3 digit**
-(1 point = 0.001 USD). Semua jarak sudah dikonversi ke satuan dolar yang wajar untuk
-scalping emas M1, dan menyertakan **range optimasi** (kolom `||start||step||stop||N`)
-supaya tinggal dicentang di Strategy Tester.
+Preset ini adalah **baseline yang PASTI menghasilkan transaksi** (Sesi & ATR-guard
+dimatikan dulu, gap MA kecil), lalu Anda perketat filter bertahap sambil membaca log
+diagnostik. Semua menyertakan **range optimasi** (`||start||step||stop||N`).
+
+| File | Pakai bila |
+|------|-----------|
+| [`Presets/XAUUSD_Scalper_M1_Pro_Exness_3digit.set`](Presets/XAUUSD_Scalper_M1_Pro_Exness_3digit.set) | Broker **3 digit** (1 pt = 0.001 USD), mis. Exness dgn XAUUSD 3 desimal. |
+| [`Presets/XAUUSD_Scalper_M1_Pro_2digit.set`](Presets/XAUUSD_Scalper_M1_Pro_2digit.set) | Broker **2 digit** (1 pt = 0.01 USD), XAUUSD 2 desimal. |
+
+> **Cek digit dulu:** saat EA start, ia mencetak `Digits=...` dan `SKALA: 100 pt = ...`
+> di tab **Experts/Journal**. Kalau `Digits=2` → pakai preset 2 digit; `Digits=3` → 3 digit.
 
 **Cara load:** copy `.set` ke `<Data Folder>/MQL5/Presets/` → attach EA ke chart
 XAUUSD M1 → tab **Inputs** → tombol **Load** → pilih file `.set`.
 
-Ringkasan nilai (ekuivalen dolar):
+Nilai baseline (versi 3 digit; bagi 10 untuk 2 digit):
 
-| Parameter | Nilai (points) | ≈ USD |
-|-----------|----------------|-------|
+| Parameter | Points (3 digit) | ≈ USD |
+|-----------|------------------|-------|
 | `StopLossPoints` | 2000 | 2.00 |
 | `PartialTPPoints` | 1000 | 1.00 |
-| `BreakevenTrigger` | 1200 | 1.20 |
-| `BreakevenBuffer` | 150 | 0.15 |
-| `TrailingDistance` | 1200 | 1.20 |
-| `TrailingStep` | 250 | 0.25 |
-| `MinMAGapPoints` | 120 | 0.12 |
-| `MaxDistPoints` | 1200 | 1.20 |
-| `MinATRPoints` / `MaxATRPoints` | 100 / 1500 | 0.10 / 1.50 |
-| `MaxSpreadPoints` | 300 | 0.30 |
+| `BreakevenTrigger` / `Buffer` | 1200 / 150 | 1.20 / 0.15 |
+| `TrailingDistance` / `Step` | 1200 / 250 | 1.20 / 0.25 |
+| `MinMAGapPoints` | 20 | 0.02 |
+| `MaxDistPoints` | 2000 | 2.00 |
+| `MaxSpreadPoints` | 500 | 0.50 |
+| `ADXThreshold` | 20 | — |
+| `UseSessionFilter` / `UseATRGuard` | **false** / **false** | — |
 | `LotSize` | 0.02 | — |
 
 > **Perhatikan:**
-> - **Verifikasi digit dulu** — jika XAUUSD Anda ternyata 2 desimal, bagi semua points ÷10.
-> - **`InpStartHour`/`InpEndHour` = jam server** — sesuaikan ke zona server broker (Exness umumnya GMT+0, sebagian GMT+2/+3).
-> - **`LotSize=0.02`** dipakai agar Partial TP 50% bisa jalan (50% × 0.02 = 0.01 = lot minimum). Untuk 0.01 lot, set `UsePartialTP=false`. Ingat: **lot = risiko** (SL 2.00 USD @0.02 lot = −4.00 USD/trade).
-> - Ini **titik awal**, bukan angka ajaib — jalankan optimasi/backtest di data Anda sendiri.
+> - **`LotSize=0.02`** agar Partial TP 50% bisa jalan (50% × 0.02 = 0.01 = lot minimum). Untuk 0.01 lot, set `UsePartialTP=false`. **Lot = risiko** (SL 2.00 USD @0.02 lot = −4.00 USD/trade).
+> - Setelah ADA transaksi, nyalakan filter satu per satu: **Sesi** (setel `StartHour`/`EndHour` ke JAM SERVER dulu) → **ATR guard** → naikkan `ADXThreshold`/`MinMAGapPoints`.
 
 ---
 
@@ -117,6 +120,50 @@ turunkan ke `0` bila real ticks tak tersedia), `Deposit=1000`, `Currency=USD`,
 `Leverage=500`, rentang `FromDate`/`ToDate` (sesuaikan ketersediaan data). Untuk beralih
 ke **optimasi**, set `Optimization=2` dan ubah flag `N`→`Y` pada parameter di `.set`
 (petunjuk lengkap ada sebagai komentar di dalam file `.ini`).
+
+---
+
+## 🔧 Troubleshooting: backtest TIDAK ADA transaksi
+
+Penyebab paling umum "no trades" pada EA berfilter seperti ini:
+
+1. **Salah skala points (2 vs 3 digit)** — nilai points yang 10× terlalu besar membuat
+   filter `MinMAGapPoints` / ATR guard **tak pernah** terpenuhi → nol transaksi.
+   *Solusi:* cek `Digits=` di log, pakai preset yang sesuai.
+2. **Filter sesi salah zona server** — jam `8–22` di zona server yang salah bisa memblokir
+   semua entry. *Solusi:* preset baru sudah **mematikan** filter sesi secara default.
+3. **ATR guard terlalu ketat** — `MinATRPoints` terlalu tinggi menolak semua bar. Default
+   preset kini **OFF**.
+4. **Kombinasi semua filter** terlalu selektif untuk periode data itu.
+
+**EA sekarang punya diagnostik bawaan** untuk menunjuk penyebabnya:
+
+- Saat init, EA mencetak `Digits`, `Point`, dan `SKALA: 100 pt = ...` — langsung ketahuan
+  kalau skala points Anda salah.
+- Di **akhir backtest** (tab Journal), EA mencetak **RINGKASAN DIAGNOSTIK**:
+
+  ```
+  ===== RINGKASAN DIAGNOSTIK EA =====
+  Sinyal dasar MA (saat flat) : 1234
+    ditolak spread            : 0
+    ditolak filter HTF        : 210
+    ditolak filter ADX        : 980     <- filter ini paling banyak menolak
+    ditolak filter slope/MA   : 40
+    ...
+  ENTRY DIEKSEKUSI            : 4
+  ===================================
+  ```
+
+  Lihat baris dengan angka penolakan terbesar → itulah filter yang perlu dilonggarkan/dimatikan.
+
+- Set **`InpDebugMode=true`** untuk melihat alasan penolakan **setiap** sinyal (hati-hati:
+  log jadi banyak pada test panjang).
+
+**Langkah cepat:** load preset baseline yang sesuai digit → jalankan → pastikan ada
+transaksi → baca ringkasan → nyalakan filter satu per satu.
+
+> Catatan: EA juga sudah dibuat **tester-safe** (mengabaikan `TERMINAL_TRADE_ALLOWED`
+> saat di Strategy Tester) sehingga guard AutoTrading tidak lagi memblokir backtest.
 
 ---
 

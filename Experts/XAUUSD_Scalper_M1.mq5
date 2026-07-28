@@ -132,7 +132,9 @@ void OnDeinit(const int reason)
 void OnTick()
 {
    // Jika AutoTrading dimatikan, jangan lakukan apa pun.
-   if(!MQLInfoInteger(MQL_TRADE_ALLOWED) || !TerminalInfoInteger(TERMINAL_TRADE_ALLOWED))
+   // Di Strategy Tester TERMINAL_TRADE_ALLOWED bisa false — abaikan saat di tester.
+   if(!MQLInfoInteger(MQL_TESTER) &&
+      (!MQLInfoInteger(MQL_TRADE_ALLOWED) || !TerminalInfoInteger(TERMINAL_TRADE_ALLOWED)))
       return;
 
    // 1) Kelola posisi terbuka (breakeven & trailing) SETIAP tick.

@@ -59,23 +59,23 @@ input group "=== Filter 2: Kekuatan Tren ADX ==="
 input bool            InpUseADX       = true;             // Aktifkan filter ADX
 input int             InpADXPeriod    = 14;               // Periode ADX
 input ENUM_TIMEFRAMES InpADXTimeframe = PERIOD_M5;        // Timeframe ADX
-input double          InpADXThreshold = 22.0;             // ADX minimum untuk entry
+input double          InpADXThreshold = 20.0;             // ADX minimum untuk entry (turun = lebih banyak entry)
 
 input group "=== Filter 3: Slope & Jarak MA ==="
 input bool   InpUseMAFilter    = true;                    // Aktifkan filter slope/jarak MA
-input int    InpMinMAGapPoints = 20;                      // Jarak minimal fast-slow MA (points)
-input int    InpMaxDistPoints  = 150;                     // Jarak maksimal harga ke fast MA (points)
+input int    InpMinMAGapPoints = 5;                       // Jarak minimal fast-slow MA (points) - kecil = mudah entry
+input int    InpMaxDistPoints  = 300;                     // Jarak maksimal harga ke fast MA (points)
 
 input group "=== Filter 4: Sesi / Jam (jam server) ==="
-input bool   InpUseSessionFilter = true;                  // Aktifkan filter sesi
-input int    InpStartHour        = 8;                     // Jam mulai (inklusif)
-input int    InpEndHour          = 20;                    // Jam selesai (eksklusif)
+input bool   InpUseSessionFilter = false;                 // Aktifkan filter sesi (OFF default: hindari salah zona server)
+input int    InpStartHour        = 8;                     // Jam mulai (inklusif) - JAM SERVER
+input int    InpEndHour          = 20;                    // Jam selesai (eksklusif) - JAM SERVER
 
 input group "=== Filter 5: Guard Volatilitas ATR (M1) ==="
 input bool   InpUseATRGuard  = true;                      // Aktifkan guard volatilitas
 input int    InpATRPeriod    = 14;                        // Periode ATR M1
-input int    InpMinATRPoints = 15;                        // ATR minimum (points) - hindari pasar sepi
-input int    InpMaxATRPoints = 200;                       // ATR maksimum (points) - hindari spike
+input int    InpMinATRPoints = 5;                         // ATR minimum (points) - hindari pasar sepi
+input int    InpMaxATRPoints = 500;                       // ATR maksimum (points) - hindari spike
 
 input group "=== Filter Umum ==="
 input int    InpMaxSpreadPoints = 50;                     // Spread maksimum untuk entry (points)
@@ -102,6 +102,21 @@ input group "=== Lot & Identitas ==="
 input double InpLotSize     = 0.01;                       // Ukuran lot
 input long   InpMagicNumber = 20250727;                   // Magic number (identitas posisi EA)
 
+input group "=== Diagnostik (debug 'tidak ada transaksi') ==="
+input bool   InpDebugMode   = false;                      // Cetak alasan tiap sinyal ditolak ke Experts log
+
+//--- Kode alasan penolakan filter (untuk diagnostik)
+enum ENUM_FILTER_RESULT
+{
+   FILTER_OK = 0,   // semua filter lolos
+   FILTER_HTF,      // ditolak filter tren HTF
+   FILTER_ADX,      // ditolak filter ADX
+   FILTER_MASLOPE,  // ditolak filter slope/jarak MA
+   FILTER_SESSION,  // ditolak filter sesi
+   FILTER_ATR,      // ditolak guard ATR
+   FILTER_NODATA    // data indikator belum siap
+};
+
 //======================= VARIABEL GLOBAL ==========================
 int      g_maFastHandle = INVALID_HANDLE;   // handle Fast MA (M1)
 int      g_maSlowHandle = INVALID_HANDLE;   // handle Slow MA (M1)
@@ -112,6 +127,17 @@ int      g_atrHandle    = INVALID_HANDLE;   // handle ATR (M1)
 datetime g_lastBarTime      = 0;            // waktu open bar M1 terakhir yang dievaluasi
 ulong    g_partialDoneTicket = 0;           // ticket posisi yang partial TP-nya sudah dilakukan
 int      g_volDigits        = 2;            // jumlah desimal volume (dari SYMBOL_VOLUME_STEP)
+
+//--- Penghitung diagnostik (dicetak ringkasannya di OnDeinit)
+long     g_cntSignal  = 0;   // jumlah sinyal dasar MA saat flat
+long     g_cntSpread  = 0;   // ditolak spread
+long     g_cntHTF     = 0;   // ditolak filter HTF
+long     g_cntADX     = 0;   // ditolak filter ADX
+long     g_cntMA      = 0;   // ditolak filter slope/jarak MA
+long     g_cntSession = 0;   // ditolak filter sesi
+long     g_cntATR     = 0;   // ditolak guard ATR
+long     g_cntNoData  = 0;   // ditolak karena data belum siap
+long     g_cntOpened  = 0;   // entry dieksekusi
 
 //+------------------------------------------------------------------+
 //| OnInit — buat semua handle indikator & konfigurasi trading       |
@@ -158,6 +184,22 @@ int OnInit()
          " Digits=", _Digits, " Point=", DoubleToString(_Point, _Digits),
          " StopsLevel=", SymbolInfoInteger(_Symbol, SYMBOL_TRADE_STOPS_LEVEL), " pt.");
 
+   // --- Info skala points supaya mudah cek 2 vs 3 digit ---
+   Print("SKALA: 100 pt = ", DoubleToString(100 * _Point, _Digits),
+         " | 1000 pt = ", DoubleToString(1000 * _Point, _Digits), " (harga).",
+         " Jika ini tidak sesuai harapan, nilai points Anda salah skala (2 vs 3 digit).");
+   if(_Digits <= 2 && InpStopLossPoints >= 1000)
+      Print("PERINGATAN: broker tampak 2 digit tapi StopLossPoints=", InpStopLossPoints,
+            " (=", DoubleToString(InpStopLossPoints * _Point, _Digits),
+            " harga). Nilai points mungkin 10x terlalu besar. Bagi 10.");
+   if(_Digits >= 3 && InpStopLossPoints > 0 && InpStopLossPoints < 500)
+      Print("PERINGATAN: broker tampak 3 digit tapi StopLossPoints=", InpStopLossPoints,
+            " (=", DoubleToString(InpStopLossPoints * _Point, _Digits),
+            " harga). Nilai points mungkin 10x terlalu kecil. Kali 10.");
+
+   // --- Reset penghitung diagnostik ---
+   ResetCounters();
+
    return(INIT_SUCCEEDED);
 }
 
@@ -166,6 +208,9 @@ int OnInit()
 //+------------------------------------------------------------------+
 void OnDeinit(const int reason)
 {
+   // Cetak ringkasan diagnostik (sangat membantu saat 'tidak ada transaksi').
+   PrintSummary();
+
    // Bebaskan resource semua handle
    if(g_maFastHandle != INVALID_HANDLE) IndicatorRelease(g_maFastHandle);
    if(g_maSlowHandle != INVALID_HANDLE) IndicatorRelease(g_maSlowHandle);
@@ -175,12 +220,44 @@ void OnDeinit(const int reason)
 }
 
 //+------------------------------------------------------------------+
+//| ResetCounters — nolkan semua penghitung diagnostik               |
+//+------------------------------------------------------------------+
+void ResetCounters()
+{
+   g_cntSignal  = 0; g_cntSpread = 0; g_cntHTF = 0; g_cntADX = 0;
+   g_cntMA      = 0; g_cntSession = 0; g_cntATR = 0; g_cntNoData = 0;
+   g_cntOpened  = 0;
+}
+
+//+------------------------------------------------------------------+
+//| PrintSummary — ringkasan mengapa entry terjadi / tidak terjadi   |
+//+------------------------------------------------------------------+
+void PrintSummary()
+{
+   Print("===== RINGKASAN DIAGNOSTIK EA =====");
+   Print("Sinyal dasar MA (saat flat) : ", g_cntSignal);
+   Print("  ditolak spread            : ", g_cntSpread);
+   Print("  ditolak filter HTF        : ", g_cntHTF);
+   Print("  ditolak filter ADX        : ", g_cntADX);
+   Print("  ditolak filter slope/MA   : ", g_cntMA);
+   Print("  ditolak filter sesi       : ", g_cntSession);
+   Print("  ditolak guard ATR         : ", g_cntATR);
+   Print("  data indikator belum siap : ", g_cntNoData);
+   Print("ENTRY DIEKSEKUSI            : ", g_cntOpened);
+   if(g_cntSignal == 0)
+      Print("Catatan: TIDAK ADA sinyal dasar sama sekali. Cek data M1 / periode MA / rentang tanggal.");
+   else if(g_cntOpened == 0)
+      Print("Catatan: ada sinyal tapi 0 entry. Lihat filter dgn angka penolakan terbesar, lalu longgarkan/matikan.");
+   Print("===================================");
+}
+
+//+------------------------------------------------------------------+
 //| OnTick — alur utama tiap tick                                    |
 //+------------------------------------------------------------------+
 void OnTick()
 {
-   // Jika AutoTrading dimatikan, jangan lakukan apa pun.
-   if(!MQLInfoInteger(MQL_TRADE_ALLOWED) || !TerminalInfoInteger(TERMINAL_TRADE_ALLOWED))
+   // Jika trading tidak diizinkan, jangan lakukan apa pun (aman di tester).
+   if(!IsTradingAllowed())
       return;
 
    // 1) Kelola posisi terbuka SETIAP tick (partial TP, breakeven, trailing).
@@ -195,21 +272,91 @@ void OnTick()
    if(HasOpenPosition())
       return;
 
-   // 4) Filter spread.
-   if(SpreadTooHigh())
-      return;
-
-   // 5) Sinyal dasar MA.
+   // 4) Sinyal dasar MA (dihitung dulu agar diagnostik akurat).
    int signal = CheckBaseSignal();
    if(signal == 0)
       return;
+   g_cntSignal++;
 
-   // 6) Semua filter penyaring noise harus lolos.
-   if(!PassAllFilters(signal))
+   // 5) Filter spread.
+   if(SpreadTooHigh())
+   {
+      g_cntSpread++;
+      if(InpDebugMode)
+         Print("[TOLAK] spread ", DoubleToString(CurrentSpreadPoints(), 1),
+               " pt > MaxSpreadPoints ", InpMaxSpreadPoints);
       return;
+   }
+
+   // 6) Filter penyaring noise — catat alasan penolakan untuk diagnostik.
+   ENUM_FILTER_RESULT res = CheckFilters(signal);
+   if(res != FILTER_OK)
+   {
+      CountReject(res);
+      if(InpDebugMode)
+         Print("[TOLAK] ", (signal > 0 ? "BUY" : "SELL"), " oleh ", FilterName(res));
+      return;
+   }
 
    // 7) Eksekusi.
    OpenTrade(signal > 0 ? ORDER_TYPE_BUY : ORDER_TYPE_SELL);
+   g_cntOpened++;
+   if(InpDebugMode)
+      Print("[ENTRY] ", (signal > 0 ? "BUY" : "SELL"), " lolos semua filter.");
+}
+
+//+------------------------------------------------------------------+
+//| IsTradingAllowed — izin trading (di Strategy Tester selalu true) |
+//+------------------------------------------------------------------+
+bool IsTradingAllowed()
+{
+   if(MQLInfoInteger(MQL_TESTER))
+      return(true);  // di dalam tester, TERMINAL_TRADE_ALLOWED bisa false — abaikan
+   return(MQLInfoInteger(MQL_TRADE_ALLOWED) && TerminalInfoInteger(TERMINAL_TRADE_ALLOWED));
+}
+
+//+------------------------------------------------------------------+
+//| CurrentSpreadPoints — spread saat ini dalam points               |
+//+------------------------------------------------------------------+
+double CurrentSpreadPoints()
+{
+   double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+   double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+   return((ask - bid) / _Point);
+}
+
+//+------------------------------------------------------------------+
+//| CountReject — tambah penghitung sesuai alasan penolakan filter   |
+//+------------------------------------------------------------------+
+void CountReject(const ENUM_FILTER_RESULT res)
+{
+   switch(res)
+   {
+      case FILTER_HTF:     g_cntHTF++;     break;
+      case FILTER_ADX:     g_cntADX++;     break;
+      case FILTER_MASLOPE: g_cntMA++;      break;
+      case FILTER_SESSION: g_cntSession++; break;
+      case FILTER_ATR:     g_cntATR++;     break;
+      case FILTER_NODATA:  g_cntNoData++;  break;
+      default: break;
+   }
+}
+
+//+------------------------------------------------------------------+
+//| FilterName — nama alasan penolakan (untuk log)                   |
+//+------------------------------------------------------------------+
+string FilterName(const ENUM_FILTER_RESULT res)
+{
+   switch(res)
+   {
+      case FILTER_HTF:     return("filter Tren HTF");
+      case FILTER_ADX:     return("filter ADX");
+      case FILTER_MASLOPE: return("filter slope/jarak MA");
+      case FILTER_SESSION: return("filter Sesi");
+      case FILTER_ATR:     return("guard ATR");
+      case FILTER_NODATA:  return("data indikator belum siap");
+      default:             return("(tidak ada)");
+   }
 }
 
 //+------------------------------------------------------------------+
@@ -269,10 +416,11 @@ int CheckBaseSignal()
 }
 
 //+------------------------------------------------------------------+
-//| PassAllFilters — true bila semua filter aktif lolos              |
+//| CheckFilters — jalankan semua filter aktif                       |
+//|   Return FILTER_OK bila lolos, atau kode alasan penolakan.       |
 //|   signal: +1 (buy) / -1 (sell)                                   |
 //+------------------------------------------------------------------+
-bool PassAllFilters(const int signal)
+ENUM_FILTER_RESULT CheckFilters(const int signal)
 {
    double close1 = iClose(_Symbol, PERIOD_M1, 1);
    double point  = _Point;
@@ -281,26 +429,26 @@ bool PassAllFilters(const int signal)
    if(InpUseHTFTrend)
    {
       double htfEMA;
-      if(!GetBuf(g_htfHandle, 0, 0, htfEMA)) return(false);
-      if(signal > 0 && !(close1 > htfEMA)) return(false);   // BUY hanya bila di atas EMA HTF
-      if(signal < 0 && !(close1 < htfEMA)) return(false);   // SELL hanya bila di bawah EMA HTF
+      if(!GetBuf(g_htfHandle, 0, 0, htfEMA)) return(FILTER_NODATA);
+      if(signal > 0 && !(close1 > htfEMA)) return(FILTER_HTF);   // BUY hanya bila di atas EMA HTF
+      if(signal < 0 && !(close1 < htfEMA)) return(FILTER_HTF);   // SELL hanya bila di bawah EMA HTF
    }
 
    //--- Filter 2: Kekuatan tren ADX (hindari sideways) ---
    if(InpUseADX)
    {
       double adx;
-      if(!GetBuf(g_adxHandle, 0, 1, adx)) return(false);    // garis ADX utama, bar tutup
-      if(adx < InpADXThreshold) return(false);
+      if(!GetBuf(g_adxHandle, 0, 1, adx)) return(FILTER_NODATA); // garis ADX utama, bar tutup
+      if(adx < InpADXThreshold) return(FILTER_ADX);
    }
 
    //--- Filter 3: Slope & jarak MA ---
    if(InpUseMAFilter)
    {
       double fast1, fast2, slow1;
-      if(!GetBuf(g_maFastHandle, 0, 1, fast1)) return(false);
-      if(!GetBuf(g_maFastHandle, 0, 2, fast2)) return(false);
-      if(!GetBuf(g_maSlowHandle, 0, 1, slow1)) return(false);
+      if(!GetBuf(g_maFastHandle, 0, 1, fast1)) return(FILTER_NODATA);
+      if(!GetBuf(g_maFastHandle, 0, 2, fast2)) return(FILTER_NODATA);
+      if(!GetBuf(g_maSlowHandle, 0, 1, slow1)) return(FILTER_NODATA);
 
       double gap     = MathAbs(fast1 - slow1);
       double minGap  = InpMinMAGapPoints * point;
@@ -308,35 +456,35 @@ bool PassAllFilters(const int signal)
 
       if(signal > 0)
       {
-         if(!(fast1 > slow1))            return(false);  // fast di atas slow
-         if(gap < minGap)                return(false);  // jarak fast-slow cukup lebar
-         if(!(fast1 > fast2))            return(false);  // fast sedang naik
-         if((close1 - fast1) > maxDist)  return(false);  // harga tidak terlalu jauh di atas fast
+         if(!(fast1 > slow1))            return(FILTER_MASLOPE);  // fast di atas slow
+         if(gap < minGap)                return(FILTER_MASLOPE);  // jarak fast-slow cukup lebar
+         if(!(fast1 > fast2))            return(FILTER_MASLOPE);  // fast sedang naik
+         if((close1 - fast1) > maxDist)  return(FILTER_MASLOPE);  // harga tidak terlalu jauh di atas fast
       }
       else
       {
-         if(!(fast1 < slow1))            return(false);  // fast di bawah slow
-         if(gap < minGap)                return(false);
-         if(!(fast1 < fast2))            return(false);  // fast sedang turun
-         if((fast1 - close1) > maxDist)  return(false);  // harga tidak terlalu jauh di bawah fast
+         if(!(fast1 < slow1))            return(FILTER_MASLOPE);  // fast di bawah slow
+         if(gap < minGap)                return(FILTER_MASLOPE);
+         if(!(fast1 < fast2))            return(FILTER_MASLOPE);  // fast sedang turun
+         if((fast1 - close1) > maxDist)  return(FILTER_MASLOPE);  // harga tidak terlalu jauh di bawah fast
       }
    }
 
    //--- Filter 4: Sesi / jam ---
    if(InpUseSessionFilter && !InSession())
-      return(false);
+      return(FILTER_SESSION);
 
    //--- Filter 5: Guard volatilitas ATR M1 ---
    if(InpUseATRGuard)
    {
       double atr;
-      if(!GetBuf(g_atrHandle, 0, 1, atr)) return(false);
+      if(!GetBuf(g_atrHandle, 0, 1, atr)) return(FILTER_NODATA);
       double atrPoints = atr / point;
-      if(atrPoints < InpMinATRPoints) return(false);   // pasar terlalu sepi
-      if(atrPoints > InpMaxATRPoints) return(false);   // spike volatilitas
+      if(atrPoints < InpMinATRPoints) return(FILTER_ATR);   // pasar terlalu sepi
+      if(atrPoints > InpMaxATRPoints) return(FILTER_ATR);   // spike volatilitas
    }
 
-   return(true);
+   return(FILTER_OK);
 }
 
 //+------------------------------------------------------------------+
