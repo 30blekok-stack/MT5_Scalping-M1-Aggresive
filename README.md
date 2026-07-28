@@ -61,6 +61,41 @@ ber-satuan **points**. Arti 1 point bergantung jumlah **digit** harga broker XAU
 
 ---
 
+## Preset `.set` untuk broker 3 digit (Exness)
+
+File: [`Presets/XAUUSD_Scalper_M1_Pro_Exness_3digit.set`](Presets/XAUUSD_Scalper_M1_Pro_Exness_3digit.set)
+— preset "starting point" untuk **`XAUUSD_Scalper_M1_Pro.mq5`** pada broker **3 digit**
+(1 point = 0.001 USD). Semua jarak sudah dikonversi ke satuan dolar yang wajar untuk
+scalping emas M1, dan menyertakan **range optimasi** (kolom `||start||step||stop||N`)
+supaya tinggal dicentang di Strategy Tester.
+
+**Cara load:** copy `.set` ke `<Data Folder>/MQL5/Presets/` → attach EA ke chart
+XAUUSD M1 → tab **Inputs** → tombol **Load** → pilih file `.set`.
+
+Ringkasan nilai (ekuivalen dolar):
+
+| Parameter | Nilai (points) | ≈ USD |
+|-----------|----------------|-------|
+| `StopLossPoints` | 2000 | 2.00 |
+| `PartialTPPoints` | 1000 | 1.00 |
+| `BreakevenTrigger` | 1200 | 1.20 |
+| `BreakevenBuffer` | 150 | 0.15 |
+| `TrailingDistance` | 1200 | 1.20 |
+| `TrailingStep` | 250 | 0.25 |
+| `MinMAGapPoints` | 120 | 0.12 |
+| `MaxDistPoints` | 1200 | 1.20 |
+| `MinATRPoints` / `MaxATRPoints` | 100 / 1500 | 0.10 / 1.50 |
+| `MaxSpreadPoints` | 300 | 0.30 |
+| `LotSize` | 0.02 | — |
+
+> **Perhatikan:**
+> - **Verifikasi digit dulu** — jika XAUUSD Anda ternyata 2 desimal, bagi semua points ÷10.
+> - **`InpStartHour`/`InpEndHour` = jam server** — sesuaikan ke zona server broker (Exness umumnya GMT+0, sebagian GMT+2/+3).
+> - **`LotSize=0.02`** dipakai agar Partial TP 50% bisa jalan (50% × 0.02 = 0.01 = lot minimum). Untuk 0.01 lot, set `UsePartialTP=false`. Ingat: **lot = risiko** (SL 2.00 USD @0.02 lot = −4.00 USD/trade).
+> - Ini **titik awal**, bukan angka ajaib — jalankan optimasi/backtest di data Anda sendiri.
+
+---
+
 ## 1) Cara Memasang di MetaTrader 5
 
 1. Buka **MetaEditor** (`F4` dari MT5).
